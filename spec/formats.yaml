@@ -1,0 +1,129 @@
+# =============================================================================
+#  spec/formats.yaml  —  THE single source of truth for Mini GPU
+#
+#  Every number format, data struct and command packet is defined here ONCE.
+#  tools/gen_types.py turns this file into:
+#      sw/generated/types.h      (C++ golden model, mgl, CUDA)
+#      rtl/pkg/gpu_pkg.sv        (SystemVerilog package)
+#      sw/generated/packets.py   (PC tools, cocotb tests)
+#  Never edit the generated files by hand. Change this file, re-run the script.
+# =============================================================================
+
+version: 1
+
+# -----------------------------------------------------------------------------
+# Fixed-point formats  (Qm.n = m integer bits incl. sign, n fraction bits)
+# -----------------------------------------------------------------------------
+fixed:
+  - name: pos           # model positions, matrix entries
+    int_bits: 16
+    frac_bits: 16
+    signed: true
+    doc: "Q16.16 model-space positions and matrix elements"
+  - name: unit          # normals, light direction, light intensity
+    int_bits: 2
+    frac_bits: 14
+    signed: true
+    doc: "Q2.14 unit vectors and light terms (range about -2..+2)"
+  - name: screen        # screen-space x, y with sub-pixel precision
+    int_bits: 12
+    frac_bits: 4
+    signed: true
+    doc: "Q12.4 screen coordinates, pixel center = n + 0.5"
+  - name: grad          # per-pixel step values (dz/dx, dcolor/dx ...)
+    int_bits: 16
+    frac_bits: 16
+    signed: true
+    doc: "Q16.16 gradients for incremental interpolation"
+
+# -----------------------------------------------------------------------------
+# Plain unsigned fields
+# -----------------------------------------------------------------------------
+uints:
+  - name: depth
+    bits: 16
+    doc: "0 = near plane, 65535 = far plane / cleared"
+  - name: color
+    bits: 16
+    doc: "RGB444 in bits 11..0 on Basys3, RGB565 on Zynq"
+  - name: tri_id
+    bits: 16
+    doc: "triangle index inside one DRAW_TRIS batch"
+
+# -----------------------------------------------------------------------------
+# Board targets
+# -----------------------------------------------------------------------------
+targets:
+  basys3: { width: 160, height: 120, color_format: rgb444, clk_mhz: 100 }
+  zynq:   { width: 320, height: 240, color_format: rgb565, clk_mhz: 100 }
+
+# -----------------------------------------------------------------------------
+# Structs passed between stages. Field order = C++ order = SV MSB-first order.
+# -----------------------------------------------------------------------------
+structs:
+  - name: vertex_in           # cmd_decoder -> vertex_transform
+    doc: "Object-space vertex exactly as sent by the host"
+    fields:
+      - { name: px,    type: pos }
+      - { name: py,    type: pos }
+      - { name: pz,    type: pos }
+      - { name: nx,    type: unit }
+      - { name: ny,    type: unit }
+      - { name: nz,    type: unit }
+      - { name: color, type: color }
+
+  - name: clip_vert           # vertex_transform -> persp_divide
+    doc: "Clip-space position plus lit color"
+    fields:
+      - { name: cx,    type: pos }
+      - { name: cy,    type: pos }
+      - { name: cz,    type: pos }
+      - { name: cw,    type: pos }
+      - { name: color, type: color }
+
+  - name: screen_vert         # persp_divide -> tri_setup
+    doc: "Screen-space vertex"
+    fields:
+      - { name: sx,    type: screen }
+      - { name: sy,    type: screen }
+      - { name: z,     type: depth }
+      - { name: color, type: color }
+
+  - name: fragment            # rasterizer -> zbuffer_unit -> shader
+    doc: "One covered pixel"
+    fields:
+      - { name: x,     type: screen }   # integer pixel stored in screen format
+      - { name: y,     type: screen }
+      - { name: z,     type: depth }
+      - { name: color, type: color }
+
+# -----------------------------------------------------------------------------
+# Command packets (host -> GPU)
+#   wire format: [opcode:1][length:2 little-endian][payload:length][checksum:1]
+#   checksum   : 8-bit sum of every byte before it (opcode, length, payload)
+#   GPU replies: ACK (0xA0) or ERR (0xE0) + error code, after every packet
+# -----------------------------------------------------------------------------
+packets:
+  - { name: CLEAR,          opcode: 0x01, payload: [ {name: color, type: color}, {name: depth, type: depth} ] }
+  - { name: SET_MATRIX,     opcode: 0x02, payload: [ {name: id, bits: 8}, {name: m, type: pos, count: 16} ],
+      doc: "id 0 = model, 1 = view-projection. 16 values, row-major" }
+  - { name: SET_LIGHT,      opcode: 0x03, payload: [ {name: lx, type: unit}, {name: ly, type: unit}, {name: lz, type: unit}, {name: ambient, type: unit} ] }
+  - { name: SET_MODE,       opcode: 0x04, payload: [ {name: shade, bits: 8}, {name: cull, bits: 8}, {name: depth_test, bits: 8} ],
+      doc: "shade 0 = flat, 1 = Gouraud, 2 = depth view" }
+  - { name: DRAW_TRIS,      opcode: 0x05, payload: [ {name: count, bits: 16}, {name: verts, struct: vertex_in, count_field: count, per_item: 3} ],
+      doc: "count triangles, 3 vertices each. Max 1000 vertices per packet; the driver splits bigger meshes" }
+  - { name: FINISH,         opcode: 0x06, payload: [], doc: "GPU replies DONE (0xD0) when the pipeline is empty" }
+  - { name: READ_FRAME,     opcode: 0x07, payload: [] }
+  - { name: READ_STATS,     opcode: 0x08, payload: [] }
+  - { name: RAW_SCREEN_TRI, opcode: 0x0F, payload: [ {name: v, struct: screen_vert, count: 3} ],
+      doc: "debug only: draw one screen-space triangle, skipping transform" }
+
+replies:
+  ACK:  0xA0
+  ERR:  0xE0
+  DONE: 0xD0
+
+errors:
+  BAD_CHECKSUM: 1
+  BAD_OPCODE:   2
+  BAD_LENGTH:   3
