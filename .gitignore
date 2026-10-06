@@ -1,0 +1,23 @@
+# Vivado
+*.jou
+*.log
+*.str
+.Xil/
+vivado/*.cache/
+vivado/*.runs/
+vivado/*.hw/
+vivado/*.sim/
+vivado/*.ip_user_files/
+*.dcp
+# keep reports small; bitstreams are rebuilt
+results/*.bit
+# simulation
+sim/cocotb/sim_build/
+sim/cocotb/results.xml
+sim/cocotb/__pycache__/
+*.vcd
+*.fst
+# build
+build/
+__pycache__/
+*.exe
