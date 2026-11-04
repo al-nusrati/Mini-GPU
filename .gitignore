@@ -1,23 +1,15 @@
-# Vivado
+# build outputs
+golden/golden
+golden/golden.exe
+golden/*.obj
+sim/obj_*/
 *.jou
 *.log
-*.str
+*.pb
+*.wdb
+xsim.dir/
 .Xil/
-vivado/*.cache/
-vivado/*.runs/
-vivado/*.hw/
-vivado/*.sim/
-vivado/*.ip_user_files/
-*.dcp
-# keep reports small; bitstreams are rebuilt
-results/*.bit
-# simulation
-sim/cocotb/sim_build/
-sim/cocotb/results.xml
-sim/cocotb/__pycache__/
-*.vcd
-*.fst
-# build
-build/
 __pycache__/
-*.exe
+# results are regenerated; keep the folder
+results/*
+!results/.gitkeep
