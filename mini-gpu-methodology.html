@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini GPU Lite Methodology</title>
+<style>
+:root{
+  --bg:#F4F5F7; --panel:#FFFFFF; --ink:#16202C; --muted:#5A6577; --line:#D5DAE2;
+  --accent:#2A4FD6; --accent-soft:#E2E8FF; --fpga:#127A52; --fpga-soft:#DDF3E8;
+  --host:#A76A00; --host-soft:#FBEFD5; --warn:#B4402F; --warn-soft:#F9E3DF;
+  --code:#1B2332; --code-ink:#E3E8F1; --m2:#8A3FB8; --m2-soft:#F1E4FA;
+  --mono:"JetBrains Mono",Consolas,"Courier New",monospace;
+  --sans:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161F; --panel:#19202C; --ink:#E5E9F0; --muted:#9AA5B8; --line:#2C3547;
+    --accent:#8EA6FF; --accent-soft:#232F55; --fpga:#6FD3A3; --fpga-soft:#173628;
+    --host:#F2BC5B; --host-soft:#3A2D12; --warn:#F2948A; --warn-soft:#3C1E1B;
+    --code:#0C1018; --code-ink:#DCE2EE; --m2:#D3A2F2; --m2-soft:#35204A;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161F; --panel:#19202C; --ink:#E5E9F0; --muted:#9AA5B8; --line:#2C3547;
+  --accent:#8EA6FF; --accent-soft:#232F55; --fpga:#6FD3A3; --fpga-soft:#173628;
+  --host:#F2BC5B; --host-soft:#3A2D12; --warn:#F2948A; --warn-soft:#3C1E1B;
+  --code:#0C1018; --code-ink:#DCE2EE; --m2:#D3A2F2; --m2-soft:#35204A;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--sans)}
+.wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+h1{font-size:clamp(1.8rem,4vw,2.5rem);line-height:1.1;margin:0 0 10px;letter-spacing:-.01em}
+h2{font-size:1.45rem;margin:48px 0 12px;padding-top:8px;border-top:2px solid var(--line)}
+h3{font-size:1.08rem;margin:22px 0 6px}
+p{margin:0 0 12px}
+.lead{color:var(--muted);max-width:70ch}
+code{font-family:var(--mono);font-size:.86em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);color:var(--code-ink);padding:14px 16px;border-radius:8px;overflow-x:auto;font:13px/1.55 var(--mono);margin:0 0 14px}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin:0 0 16px}
+th,td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--bg);font-weight:600}
+tr:last-child td{border-bottom:none}
+ul,ol{margin:0 0 12px;padding-left:22px}
+li{margin-bottom:4px}
+nav{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:22px 0}
+nav ol{columns:2;column-gap:28px;margin:0}
+nav a{color:var(--accent);text-decoration:none}
+nav a:hover{text-decoration:underline}
+.tag{display:inline-block;font:600 .72rem/1 var(--sans);padding:4px 7px;border-radius:99px;vertical-align:middle;margin-left:6px}
+.t-fpga{background:var(--fpga-soft);color:var(--fpga)}
+.t-host{background:var(--host-soft);color:var(--host)}
+.t-m1{background:var(--accent-soft);color:var(--accent)}
+.t-m2{background:var(--m2-soft);color:var(--m2)}
+.box.blend{border-top-color:var(--m2)}
+.note{border-left:4px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:0 0 14px}
+.note.warn{border-color:var(--warn);background:var(--warn-soft)}
+.note p:last-child{margin:0}
+.pipe{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:8px 0 18px}
+.box{flex:1 1 140px;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--fpga);border-radius:8px;padding:10px 12px;font-size:.88rem}
+.box.host{border-top-color:var(--host)}
+.box b{display:block;font-size:.95rem}
+.box span{color:var(--muted)}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:0 0 18px}
+.stage h3{margin-top:0;font-size:1.15rem}
+.stage .n{font-family:var(--mono);color:var(--accent);margin-right:8px}
+.io{display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 14px;font-size:.92rem;margin:10px 0 0;padding-top:10px;border-top:1px dashed var(--line)}
+.io dt{color:var(--muted);font-weight:600}
+.io dd{margin:0}
+.chain{font:13px/1.7 var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:0 0 14px}
+.chain .f{color:var(--accent);font-weight:600}
+.chain .p{color:var(--muted)}
+.theme{float:right;font:inherit;font-size:.82rem;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+footer{margin-top:50px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padding-top:14px}
+@media (max-width:640px){
+  nav ol{columns:1}
+  .io{grid-template-columns:1fr}
+  .io dt{margin-top:6px}
+}
+@media print{.theme{display:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<button class="theme" id="theme" type="button">Light / dark</button>
+<h1>Mini GPU Lite: methodology</h1>
+<p class="lead">One fixed-function triangle rasterizer, written once in SystemVerilog, deployed on two FPGA boards (Basys3 and ALINX Zynq-7020), verified bit for bit against a C++ model, and compared against CPUs. Two people: <b>Member 1</b> builds and measures the hardware, <b>Member 2</b> makes the 3D models in Blender. This page lists every stage, who owns it, what goes in, what comes out, and how we know it worked.</p>
+
+<nav aria-label="Contents">
+<ol>
+  <li><a href="#q">Research question</a></li>
+  <li><a href="#team">Team and roles</a></li>
+  <li><a href="#sys">System at a glance</a></li>
+  <li><a href="#s0">Stage 0: Tools</a></li>
+  <li><a href="#s1">Stage 1: Data format</a></li>
+  <li><a href="#s2">Stage 2: Scene generation</a></li>
+  <li><a href="#s2b">Stage 2b: Blender models</a></li>
+  <li><a href="#s3">Stage 3: Golden model</a></li>
+  <li><a href="#s4">Stage 4: RTL design</a></li>
+  <li><a href="#s5">Stage 5: Simulation</a></li>
+  <li><a href="#s6">Stage 6: Basys3</a></li>
+  <li><a href="#s7">Stage 7: Zynq</a></li>
+  <li><a href="#s8">Stage 8: Metrics</a></li>
+  <li><a href="#s9">Stage 9: Experiments</a></li>
+  <li><a href="#s10">Stage 10: Analysis</a></li>
+  <li><a href="#limits">Limits</a></li>
+  <li><a href="#flow">Workflow and map</a></li>
+  <li><a href="#plan">14-day plan</a></li>
+</ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="q">1. Research question</h2>
+<p><b>How does the same hardware rasterizer behave on two different FPGA platforms, and how does it compare with software on an embedded CPU and a desktop CPU, in speed, resources, energy, and data-transfer cost?</b></p>
+<h3>What we compare</h3>
+<div class="tbl"><table>
+<tr><th>#</th><th>Comparison</th><th>Same thing kept fixed</th><th>What changes</th></tr>
+<tr><td>C1</td><td>Basys3 vs Zynq-7020</td><td>Identical <code>gpu_core.sv</code>, 100 MHz, 160×120</td><td>Chip family, resources, host link (UART vs AXI)</td></tr>
+<tr><td>C2</td><td>Zynq FPGA fabric vs Zynq ARM Cortex-A9</td><td>Same chip, same algorithm, same scene</td><td>Hardware pipeline vs software loop</td></tr>
+<tr><td>C3</td><td>FPGA vs desktop CPU</td><td>Same algorithm (golden model)</td><td>Platform</td></tr>
+<tr><td>C4</td><td>Compute vs I/O</td><td>Same scene</td><td>Upload / readback time vs drawing time</td></tr>
+</table></div>
+<div class="note warn"><p>Expected result, stated up front: a 3+ GHz desktop core is faster than a 1-pixel-per-clock design at 100 MHz. The paper does not claim otherwise. The interesting results are C1, C2, energy per frame, and C4.</p></div>
+
+<!-- ============================================================ -->
+<h2 id="team">2. Team and roles</h2>
+<div class="tbl"><table>
+<tr><th></th><th><span class="tag t-m1" style="margin:0">Member 1</span> Hardware (Jawad)</th><th><span class="tag t-m2" style="margin:0">Member 2</span> 3D modeling</th></tr>
+<tr><td>Owns</td><td>RTL, golden model, simulation, Basys3, Zynq, measurements, paper lead</td><td>Blender models, materials, export, model checks, figures, model sections of the paper</td></tr>
+<tr><td>Stages</td><td>S0, S1, S3, S4, S5, S6, S7, S8, S9 (E1–E7), S10</td><td>S0 (Python + golden only), S2b, S9 (E8), S10 (figures)</td></tr>
+<tr><td>Delivers</td><td>Working GPU on both boards, all result tables</td><td><code>models/*.obj + .mtl</code>, <code>models/MODELS.md</code>, preview + Blender reference images</td></tr>
+<tr><td>Needs</td><td>Vivado, Vitis, both boards</td><td>Blender 4.x, Python, the golden model. <b>No FPGA needed.</b></td></tr>
+</table></div>
+<h3>The hand-off contract between the two members</h3>
+<p>Member 2's models go straight into Member 1's pipeline, so every model must follow these rules:</p>
+<div class="tbl"><table>
+<tr><th>Rule</th><th>Why</th></tr>
+<tr><td>Wavefront <code>.obj</code> + <code>.mtl</code>, exported from Blender</td><td>The loader reads <code>v</code>, <code>f</code>, <code>usemtl</code>, and <code>Kd</code> colors</td></tr>
+<tr><td>At most <b>1024 triangles</b> after triangulation</td><td>Size of the GPU's triangle memory</td></tr>
+<tr><td>Normals point outward (Blender: Mesh → Normals → Recalculate Outside)</td><td>The FPGA culls faces by winding; flipped faces disappear</td></tr>
+<tr><td>One solid color per material (Base Color); no textures</td><td>The GPU draws one flat color per triangle</td></tr>
+<tr><td>Front of the model faces Blender's <b>−Y</b> (Front view, numpad 1)</td><td>Angle 0 in our scenes = Blender front view</td></tr>
+<tr><td>Closed, clean mesh; no duplicate vertices; Apply all modifiers</td><td>Holes and overlaps show as gaps or flicker</td></tr>
+<tr><td><code>python pc/check_models.py</code> says <b>OK</b> for every model</td><td>Member 2 checks before handing over</td></tr>
+</table></div>
+
+<h2 id="sys">3. System at a glance</h2>
+<div class="pipe">
+  <div class="box blend"><b>Blender model</b><span>Member 2: .obj + .mtl</span></div>
+  <div class="box host"><b>Scene build</b><span>3D transform, projection, lighting</span></div>
+  <div class="box host"><b>Host link</b><span>UART (Basys3) or AXI-Lite (Zynq)</span></div>
+  <div class="box"><b>Command decoder</b><span>stores triangles</span></div>
+  <div class="box"><b>Triangle setup</b><span>edges, area, box, cull</span></div>
+  <div class="box"><b>Rasterizer</b><span>1 pixel per clock</span></div>
+  <div class="box"><b>Depth unit</b><span>Z-test, framebuffer</span></div>
+  <div class="box host"><b>Readback</b><span>frame + counters to host</span></div>
+</div>
+<p><span class="tag t-host">HOST</span> = PC Python or ARM C. <span class="tag t-fpga">FPGA</span> = our RTL. Purple = Member 2.</p>
+<div class="tbl"><table>
+<tr><th>Parameter</th><th>Value</th></tr>
+<tr><td>Resolution</td><td>160 × 120 (19,200 pixels), both boards</td></tr>
+<tr><td>Clock</td><td>100 MHz, both boards</td></tr>
+<tr><td>Max triangles per frame</td><td>1024</td></tr>
+<tr><td>Coordinates</td><td>integer pixels, signed 16-bit, valid range −2048…2047</td></tr>
+<tr><td>Depth</td><td>16-bit in buffer; interpolated in Q16.16 (48-bit accumulator)</td></tr>
+<tr><td>Color</td><td>RGB444 in a 16-bit word, flat per triangle</td></tr>
+<tr><td>Memory</td><td>depth BRAM + color BRAM (16 bit each) + triangle BRAM (208 bit × 1024)</td></tr>
+</table></div>
+
+<!-- ============================================================ -->
+<h2 id="s0">4. Methodology, stage by stage</h2>
+
+<div class="stage" id="s0b">
+<h3><span class="n">S0</span>Tools and environment <span class="tag t-m1">Member 1</span><span class="tag t-m2">Member 2</span></h3>
+<ol>
+  <li>Install Python 3 and <code>pip install pyserial</code>.</li>
+  <li>Install a C++ compiler (MSYS2 g++ or Visual Studio Build Tools), then run <code>golden\build.bat</code>.</li>
+  <li>Use Vivado 2024 + Vitis (xsim for simulation, synthesis, implementation, block design).</li>
+  <li>Put the project in the repo as <code>lite/</code> and commit.</li>
+  <li><span class="tag t-m2">Member 2</span> only needs Python, the golden model (step 2) and Blender 4.x.</li>
+</ol>
+<dl class="io">
+<dt>Output</dt><dd><code>golden.exe</code> builds; <code>xvlog</code> and <code>vivado</code> run from a terminal.</dd>
+<dt>Pass if</dt><dd>All three commands start without errors.</dd>
+</dl>
+</div>
+
+<div class="stage" id="s1">
+<h3><span class="n">S1</span>Define the data format (the contract) <span class="tag t-m1">Member 1</span></h3>
+<p>Host and GPU talk only through these bytes, on both boards. Little-endian.</p>
+<div class="tbl"><table>
+<tr><th>Opcode</th><th>Command</th><th>Payload</th><th>GPU reply</th></tr>
+<tr><td>0x00</td><td>PING</td><td>none</td><td><code>'G' 'P' 'U' 01</code></td></tr>
+<tr><td>0x01</td><td>CLEAR</td><td>color (2 B)</td><td><code>A0</code> when done</td></tr>
+<tr><td>0x02</td><td>LOAD_TRI</td><td>26 B triangle</td><td>none</td></tr>
+<tr><td>0x03</td><td>DRAW</td><td>none</td><td><code>D0</code> + cycles, tested, inside, written (4 B each)</td></tr>
+<tr><td>0x04</td><td>READ</td><td>none</td><td>19,200 pixels × 2 B</td></tr>
+<tr><td>0x05</td><td>RESET_TRIS</td><td>none</td><td><code>A0</code></td></tr>
+</table></div>
+<p><b>Triangle (26 bytes):</b> <code>x0 y0 x1 y1 x2 y2</code> (int16 each) · <code>z0</code> depth at v0, <code>dz/dx</code>, <code>dz/dy</code> (int32, Q16.16) · <code>color</code> (uint16).</p>
+<dl class="io">
+<dt>Files</dt><dd><code>pc/protocol.py</code>, header of <code>rtl/gpu_core.sv</code></dd>
+<dt>Pass if</dt><dd>Python encoder, C++ parser and RTL parser agree (checked in S5).</dd>
+</dl>
+</div>
+
+<div class="stage" id="s2">
+<h3><span class="n">S2</span>Scene generation <span class="tag t-host">HOST</span><span class="tag t-m1">Member 1</span></h3>
+<ol>
+  <li><b>Model:</b> built-in test scenes (cube, UV-sphere, random, grid, overlap) <b>or</b> a Blender model from S2b: center it and scale it to radius 1.</li>
+  <li><b>Transform:</b> rotate by the scene angle.</li>
+  <li><b>Lighting:</b> face normal <code>n</code>; brightness <code>k = 0.25 + 0.75·max(0, n·L)</code>; color = base × k, rounded to RGB444.</li>
+  <li><b>Projection:</b> camera at <code>z = −3</code>, <code>sx = W/2 + f·x/z</code>, <code>sy = H/2 − f·y/z</code>, rounded to integer pixels.</li>
+  <li><b>Depth:</b> <code>d = (1/z − 1/near)/(1/far − 1/near)</code> scaled to 0…65535. This is linear in screen space, so a plane fits it exactly.</li>
+  <li><b>Depth plane fit:</b> from the 3 corners solve <code>z = z0 + a(x−x0) + b(y−y0)</code>; send <code>z0, a, b</code> as Q16.16.</li>
+  <li><b>Winding:</b> order vertices so front faces have positive area. The FPGA culls the rest.</li>
+  <li><b>Pack:</b> <code>RESET, CLEAR, LOAD_TRI…, DRAW, READ</code>.</li>
+</ol>
+<dl class="io">
+<dt>Command</dt><dd><code>python pc/make_scene.py cube</code> · <code>python pc/make_scene.py obj models/teapot.obj --angle 30 --tilt 15</code></dd>
+<dt>Output</dt><dd><code>scenes/cube.bin</code> (board), <code>scenes/cube.hex</code> (testbench), <code>zynq/scene_cube.h</code> (ARM)</dd>
+<dt>Pass if</dt><dd>Golden image shows only camera-facing faces, lit from upper-left.</dd>
+</dl>
+</div>
+
+<div class="stage" id="s2b">
+<h3><span class="n">S2b</span>Blender model preparation <span class="tag t-m2">Member 2</span></h3>
+<p>Goal: a set of clean, low-poly, colored models that look good at 160 × 120 and stay under 1024 triangles.</p>
+<h3>Models to make</h3>
+<div class="tbl"><table>
+<tr><th>File</th><th>What</th><th>Triangles</th><th>Used in</th></tr>
+<tr><td><code>teapot.obj</code></td><td>Utah-style teapot, 2–3 colors</td><td>~800–1000</td><td>Main demo, paper figure</td></tr>
+<tr><td><code>bunny.obj</code></td><td>Low-poly bunny (decimated)</td><td>~1000</td><td>Organic shape, many small triangles</td></tr>
+<tr><td><code>room.obj</code></td><td>Small scene: floor, wall, table, 2 objects</td><td>~300–600</td><td>Depth test with large overlapping triangles</td></tr>
+<tr><td><code>own.obj</code></td><td>Something original you design (e.g. NUST logo in 3D, a robot)</td><td>≤1024</td><td>Paper / demo highlight</td></tr>
+<tr><td><code>teapot_lod100/250/500/1000.obj</code></td><td>Same teapot decimated to 4 sizes</td><td>100, 250, 500, 1000</td><td>Experiment E8</td></tr>
+</table></div>
+<h3>Steps for every model</h3>
+<ol>
+  <li><b>Model</b> in Blender 4.x (or download a public-domain model and clean it). Keep the model's front facing −Y.</li>
+  <li><b>Turn on the triangle counter:</b> Viewport Overlays → Statistics.</li>
+  <li><b>Reduce:</b> add a <i>Decimate</i> modifier (Collapse), lower Ratio until Triangles ≤ 1024. Try <i>Planar</i> for hard-surface models.</li>
+  <li><b>Clean:</b> Edit Mode → select all → Mesh → Clean Up → Merge by Distance; then Mesh → Normals → Recalculate Outside.</li>
+  <li><b>Color:</b> one material per color, set <i>Base Color</i> only. Use strong, different colors (the GPU has 16 levels per channel).</li>
+  <li><b>Apply</b> modifiers and the object's scale/rotation (Ctrl+A → All Transforms).</li>
+  <li><b>Export:</b> File → Export → Wavefront (.obj). Settings: <i>Selection Only</i> on; Forward <b>−Z</b>, Up <b>Y</b> (defaults); Geometry: <b>Apply Modifiers</b> on, <b>Triangulated Mesh</b> on; Materials: <b>Export</b> on (writes the .mtl). UVs and normals can stay on; they are ignored.</li>
+  <li><b>Check:</b> <code>python pc/check_models.py models/teapot.obj --angles 0 45 90</code>. It must say OK; open <code>results/preview_teapot_a0.png</code> etc.</li>
+  <li><b>Reference image:</b> in Blender, Front view, Viewport Shading → Solid, Lighting <i>Flat</i>, Color <i>Material</i>; screenshot. Save as <code>models/ref_teapot.png</code> for the side-by-side figure.</li>
+  <li><b>Log it</b> in <code>models/MODELS.md</code>: name, source/license, triangle count, materials, notes.</li>
+</ol>
+<dl class="io">
+<dt>Output</dt><dd><code>models/*.obj</code>, <code>*.mtl</code>, <code>ref_*.png</code>, <code>MODELS.md</code>, <code>results/models_report.csv</code></dd>
+<dt>Pass if</dt><dd><code>check_models.py</code> OK for all; previews show the model's front, right colors, filling a good part of the screen; no missing faces.</dd>
+<dt>Hand-off</dt><dd>Push <code>models/</code> to the repo. Member 1 then runs the same files in simulation and on both boards.</dd>
+</dl>
+</div>
+
+<div class="stage" id="s3">
+<h3><span class="n">S3</span>Golden model (the reference truth) <span class="tag t-m1">Member 1</span></h3>
+<p>A C++ program that does exactly the integer steps the hardware does, in the same order. It defines "correct".</p>
+<h3>Algorithm</h3>
+<pre><code>edge e(a→b, p) = (px−ax)(by−ay) − (py−ay)(bx−ax)
+e0 = e(v1→v2)   e1 = e(v2→v0)   e2 = e(v0→v1)
+area = e2 at p = v2          → if area ≤ 0: cull (back face / flat)
+box  = min/max of x, y, clamped to the screen → if empty: cull
+
+top-left fill rule: bias = 0 on top or left edges, else 1
+start at box corner: E_i = e_i(minx, miny) − bias_i
+                     z   = z0 + dzdx(minx−x0) + dzdy(miny−y0)
+
+for each row:   for each pixel:
+    inside = E0 ≥ 0 and E1 ≥ 0 and E2 ≥ 0
+    if inside and depth16(z) &lt; zbuf[p]: write depth + color
+    step right:  E_i += A_i (= by−ay),  z += dzdx
+  step down:     E_i += B_i (= ax−bx),  z += dzdy</code></pre>
+<h3>Cycle model (predicts the hardware exactly)</h3>
+<pre><code>cycles = 3 + Σ over triangles ( 5           if culled
+                                6 + box_w × box_h   if drawn )</code></pre>
+<dl class="io">
+<dt>Command</dt><dd><code>golden scenes/cube.bin results/cube</code></dd>
+<dt>Output</dt><dd><code>results/cube_golden.bin</code> (frame), <code>cube_golden.json</code> (counters, CRC32, predicted cycles, CPU ms/frame)</dd>
+<dt>Pass if</dt><dd>Grid scene: <code>inside = 19,200</code> exactly (every pixel covered once: fill rule works).</dd>
+</dl>
+</div>
+
+<div class="stage" id="s4">
+<h3><span class="n">S4</span>RTL design <span class="tag t-fpga">FPGA</span> <span class="tag t-m1">Member 1</span></h3>
+<div class="tbl"><table>
+<tr><th>Module</th><th>Job</th></tr>
+<tr><td><code>uart_rx.sv / uart_tx.sv</code></td><td>Serial ↔ bytes, 921600 baud (Basys3 only)</td></tr>
+<tr><td><code>gpu_core.sv</code></td><td>Command FSM, triangle BRAM, counters, reply and readback</td></tr>
+<tr><td><code>rasterizer.sv</code></td><td>Setup + walk, 1 pixel per clock</td></tr>
+<tr><td><code>depth_unit.sv</code></td><td>2-stage Z-test, depth + color BRAM, clear engine</td></tr>
+<tr><td><code>sdp_ram.sv</code></td><td>Simple dual-port BRAM template</td></tr>
+<tr><td><code>basys3_top.sv</code></td><td>Board wrapper: UART + LEDs</td></tr>
+<tr><td><code>zynq/gpu_axil.v</code></td><td>AXI-Lite wrapper for the ARM (TX, STATUS, RX, ID registers)</td></tr>
+</table></div>
+<h3>Rasterizer state machine</h3>
+<pre><code>IDLE → FETCH → LATCH → SETUP1 → SETUP2 ─(culled)→ NEXT
+                                  └→ SETUP3 → WALK ×(box pixels) → NEXT → FETCH … → DONE
+SETUP1: A, B, bias, area, box      SETUP2: cull test, multiplies (registered for timing)
+SETUP3: start values               WALK:   test + emit fragment, then add A or B</code></pre>
+<h3>Depth hazard</h3>
+<p>The depth unit reads at cycle t and writes at t+1, so a new fragment at the same address one cycle later would read stale depth. Inside one triangle all addresses differ. Between triangles the setup takes at least 6 cycles, which is longer than the 2-cycle window. So no stall or forwarding is needed in this version.</p>
+<dl class="io">
+<dt>Pass if</dt><dd>Verilator <code>-Wall</code> lint clean; Vivado timing met at 100 MHz (WNS ≥ 0).</dd>
+</dl>
+</div>
+
+<div class="stage" id="s5">
+<h3><span class="n">S5</span>Verification in simulation <span class="tag t-m1">Member 1</span></h3>
+<ol>
+  <li>Generate all 5 scenes and their golden outputs.</li>
+  <li>Run each scene through 3 testbenches:
+    <ul>
+      <li><code>tb_gpu.sv</code>: core only, random input gaps and output backpressure</li>
+      <li><code>tb_top.sv</code>: full Basys3 design through real UART bits</li>
+      <li><code>tb_axil.sv</code>: Zynq wrapper driven like <code>main.c</code></li>
+    </ul></li>
+  <li>Compare each reply stream with <code>pc/compare.py</code>.</li>
+</ol>
+<div class="tbl"><table>
+<tr><th>Scene</th><th>What it tests</th></tr>
+<tr><td>cube</td><td>Back-face culling, depth across faces</td></tr>
+<tr><td>sphere</td><td>Many small triangles, setup overhead</td></tr>
+<tr><td>random (500)</td><td>Overlaps, depth test, off-screen clipping</td></tr>
+<tr><td>grid</td><td>Fill rule: shared edges, every pixel exactly once</td></tr>
+<tr><td>overlap</td><td>Near triangle wins regardless of draw order</td></tr>
+<tr><td>Blender models (S2b)</td><td>Real meshes: many tiny and edge-on triangles</td></tr>
+</table></div>
+<dl class="io">
+<dt>Command</dt><dd><code>sim\run_xsim.bat cube</code>, <code>sim\run_xsim_top.bat cube</code> (Windows) · <code>sim/run_all.sh</code> (Linux)</dd>
+<dt>Pass if</dt><dd>0 pixels different, tested/inside/written equal, cycle model error 0.</dd>
+<dt>Status</dt><dd>Done in Verilator: 15 of 15 PASS, cycle error 0. A Blender-style test torus (576 triangles, quads + 2 materials) also PASS.</dd>
+</dl>
+</div>
+
+<div class="stage" id="s6">
+<h3><span class="n">S6</span>Basys3 deployment <span class="tag t-m1">Member 1</span></h3>
+<ol>
+  <li>Build: <code>vivado -mode batch -source vivado\build_basys3.tcl</code></li>
+  <li>Check <code>results\basys3_board_timing.rpt</code>: WNS must be ≥ 0.</li>
+  <li>Program: <code>vivado -mode batch -source vivado\program_basys3.tcl</code>. LED0 should blink.</li>
+  <li>Run: <code>python pc\run_board.py cube --port COM5 --draws 10</code></li>
+  <li>Compare: <code>python pc\compare.py cube results\cube_basys3.bin --tag basys3 --timing results\cube_basys3_timing.json</code></li>
+  <li>Repeat for all 5 scenes.</li>
+</ol>
+<dl class="io">
+<dt>Output</dt><dd>Board frame PNG, diff PNG, json with cycles + upload/readback seconds</dd>
+<dt>Pass if</dt><dd>Same criteria as S5, on real hardware. Board cycles equal simulation cycles.</dd>
+</dl>
+</div>
+
+<div class="stage" id="s7">
+<h3><span class="n">S7</span>Zynq deployment <span class="tag t-m1">Member 1</span></h3>
+<ol>
+  <li>Vivado project with the Zynq part; add <code>gpu_axil.v</code> + the 4 core files.</li>
+  <li>Block design: ZYNQ7 PS (ALINX preset) → Add Module <code>gpu_axil</code> → Connection Automation → FCLK_CLK0 = 100 MHz.</li>
+  <li>Note the base address, generate bitstream, export hardware (<code>.xsa</code>).</li>
+  <li>Vitis: platform from <code>.xsa</code>, app with <code>zynq/main.c</code> + <code>scene_cube.h</code>.</li>
+  <li>Run; terminal at 115200 prints FPGA cycles, CRC, link times, and the <b>ARM software</b> time for the same scene.</li>
+  <li>For a full image check: <code>DUMP_FRAME 1</code> → save log → <code>pc\zynq_log.py</code> → <code>compare.py --tag zynq</code>.</li>
+</ol>
+<dl class="io">
+<dt>Pass if</dt><dd>FPGA CRC = ARM CRC = golden CRC.</dd>
+<dt>Fallback</dt><dd>If the board fails: <code>vivado\core_compare.tcl</code> still gives Zynq resources, timing, power ("implementation only").</dd>
+</dl>
+</div>
+
+<div class="stage" id="s8">
+<h3><span class="n">S8</span>Metrics (how every number is computed) <span class="tag t-m1">Member 1</span></h3>
+<div class="tbl"><table>
+<tr><th>Metric</th><th>Formula / source</th></tr>
+<tr><td>FPGA draw time</td><td><code>cycles / f_clk</code>, cycles from the on-chip counter</td></tr>
+<tr><td>Pixel throughput</td><td><code>pixels_tested / draw_time</code> (Mpix/s)</td></tr>
+<tr><td>Triangle throughput</td><td><code>triangles / draw_time</code></td></tr>
+<tr><td>Raster efficiency</td><td><code>inside / tested</code> (how much of the box is really triangle)</td></tr>
+<tr><td>CPU time</td><td>Golden raster loop only, averaged over ≥ 300 ms of runs</td></tr>
+<tr><td>ARM time</td><td>Same loop on Cortex-A9, <code>XTime</code>, average of 20 runs</td></tr>
+<tr><td>Speedup</td><td><code>software_time / FPGA_draw_time</code></td></tr>
+<tr><td>Upload / readback</td><td>Host wall-clock around the transfer</td></tr>
+<tr><td>End-to-end</td><td><code>upload + draw + readback</code></td></tr>
+<tr><td>Resources</td><td>LUT, FF, BRAM36, DSP from <code>report_utilization</code> (post-route)</td></tr>
+<tr><td>Fmax</td><td><code>1000 / (10 − WNS)</code> MHz</td></tr>
+<tr><td>Power</td><td>Vivado <code>report_power</code> (estimate; say so)</td></tr>
+<tr><td>Energy per frame</td><td><code>power × draw_time</code></td></tr>
+<tr><td>Cycle model error</td><td><code>measured − predicted</code> (target 0)</td></tr>
+</table></div>
+</div>
+
+<div class="stage" id="s9">
+<h3><span class="n">S9</span>Experiments <span class="tag t-m1">Member 1</span><span class="tag t-m2">Member 2</span></h3>
+<div class="tbl"><table>
+<tr><th>ID</th><th>Experiment</th><th>Variable</th><th>Command</th></tr>
+<tr><td>E1</td><td>Correctness on hardware</td><td>5 scenes × 2 boards</td><td><code>run_board.py</code>, <code>main.c</code>, <code>compare.py</code></td></tr>
+<tr><td>E2</td><td>Resources, Fmax, power</td><td>Basys3 vs Zynq part</td><td><code>core_compare.tcl</code> → <code>collect_vivado.py</code></td></tr>
+<tr><td>E3</td><td>Triangle-size sweep</td><td>size 4, 8, 16, 32, 64 px (500 tris)</td><td><code>sweep.py --port COM5</code></td></tr>
+<tr><td>E4</td><td>FPGA vs ARM, same chip</td><td>5 scenes</td><td><code>main.c</code> output</td></tr>
+<tr><td>E5</td><td>FPGA vs desktop CPU</td><td>all scenes</td><td>golden json</td></tr>
+<tr><td>E6</td><td>I/O bottleneck</td><td>UART 921600 vs AXI; baud 115200 vs 921600</td><td>timing json files</td></tr>
+<tr><td>E7</td><td>Cycle model validation</td><td>all runs</td><td><code>cycle_model_error</code> in json</td></tr>
+<tr><td>E8 <span class="tag t-m2">Member 2</span></td><td>Model complexity</td><td>same teapot at 100 / 250 / 500 / 1000 triangles; plus the 4 real models</td><td><code>check_models.py</code> (prediction), then <code>run_board.py</code> on each</td></tr>
+</table></div>
+<p>Repeat every measured run at least 5 times (<code>--draws</code>) and report the mean. The on-chip cycle count is deterministic, so it should never change.</p>
+</div>
+
+<div class="stage" id="s10">
+<h3><span class="n">S10</span>Analysis and reporting <span class="tag t-m1">Member 1</span><span class="tag t-m2">Member 2</span></h3>
+<ol>
+  <li><code>python pc\make_report.py</code> → <code>results/results_table.csv</code> + <code>.md</code></li>
+  <li>Join with <code>fpga_compare.csv</code> (E2) and <code>sweep.csv</code> (E3).</li>
+  <li>Figures: time vs triangle size (FPGA, ARM, CPU); stacked upload / draw / readback per board; resource bars per board.</li>
+  <li><span class="tag t-m2">Member 2</span> figures: Blender reference vs FPGA output side by side; time vs triangle count (E8); the model gallery.</li>
+  <li>Write the paper: intro → background → design → verification → results → discussion → future work.</li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="limits">5. Limits (state them in the paper)</h2>
+<ul>
+  <li>Transform, projection and lighting run on the host, not the FPGA.</li>
+  <li>Flat color per triangle; no texture, no Gouraud.</li>
+  <li>No near-plane clipping; scenes keep the camera outside the model.</li>
+  <li>Integer vertex positions (no sub-pixel precision). Faces seen almost edge-on (about 1–5 pixels) can be culled or kept against the true 3D facing because of this rounding.</li>
+  <li>Models must stay under 1024 triangles; textures and smooth shading from Blender are ignored.</li>
+  <li>Power numbers are Vivado estimates unless measured on the board.</li>
+  <li>One pixel per clock; a multi-pixel version is future work.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="flow">6. Workflow and complete map</h2>
+<h3>Model hand-off <span class="tag t-m2">Member 2</span> → <span class="tag t-m1">Member 1</span></h3>
+<div class="chain">
+Member 2 models in <span class="f">Blender</span> <span class="p">(decimate ≤ 1024 tris, materials, normals outside)</span><br>
+→ <span class="f">models/teapot.obj + teapot.mtl</span> <span class="p">(Wavefront export, triangulated)</span><br>
+→ <span class="f">pc/check_models.py</span> <span class="p">(loads, checks budget, runs golden; passes previews + report)</span><br>
+→ <span class="f">results/preview_teapot_a*.png</span> + <span class="f">models_report.csv</span> <span class="p">(Member 2 checks the look)</span><br>
+→ git push <span class="f">models/</span> → Member 1 runs <span class="f">make_scene.py obj models/teapot.obj</span> → <span class="f">scenes/teapot.bin</span> → same chain as below
+</div>
+<h3>Basys3 run</h3>
+<div class="chain">
+User runs <span class="f">run_board.py cube --port COM5</span><br>
+→ <span class="f">scenes/cube.bin</span> <span class="p">(made by make_scene.py; the bytes to send)</span><br>
+→ <span class="f">pc/run_board.py</span> <span class="p">(sends commands, waits for replies, times them; passes bytes over USB-UART)</span><br>
+→ <span class="f">rtl/uart_rx.sv</span> <span class="p">(bits → bytes; passes 1 byte per pulse)</span><br>
+→ <span class="f">rtl/gpu_core.sv</span> <span class="p">(decodes, stores triangles, starts DRAW; passes 208-bit triangle words)</span><br>
+→ <span class="f">rtl/rasterizer.sv</span> <span class="p">(setup + walk, 1 pixel/clock; passes fragments: address, depth, color)</span><br>
+→ <span class="f">rtl/depth_unit.sv</span> <span class="p">(Z-test, writes BRAM; passes frame on READ)</span><br>
+→ <span class="f">rtl/uart_tx.sv</span> <span class="p">(bytes → bits back to the PC)</span><br>
+→ <span class="f">results/cube_basys3.bin</span> + <span class="f">cube_basys3_timing.json</span><br>
+→ <span class="f">pc/compare.py</span> <span class="p">(vs golden; writes PNGs + json)</span> → <b>PASS / FAIL</b>
+</div>
+<h3>Zynq run</h3>
+<div class="chain">
+<span class="f">zynq/main.c</span> <span class="p">(ARM pushes the same bytes from scene_cube.h)</span><br>
+→ <span class="f">zynq/gpu_axil.v</span> <span class="p">(TX / STATUS / RX registers)</span><br>
+→ <span class="f">gpu_core.sv → rasterizer.sv → depth_unit.sv</span> <span class="p">(same as Basys3)</span><br>
+→ <span class="f">main.c</span> <span class="p">(prints cycles, CRC, link times, then the ARM software time + CRC)</span><br>
+→ <span class="f">pc/zynq_log.py</span> → <span class="f">pc/compare.py --tag zynq</span>
+</div>
+<h3>Complete map</h3>
+<pre><code>Blender → models/X.obj + .mtl → check_models.py → previews + models_report.csv
+             └→ make_scene.py obj ─┐
+make_scene.py ─→ scenes/X.bin ─┬→ golden.cpp ─→ X_golden.bin / .json   (truth, CPU time, cycle model)
+                               ├→ tb_gpu / tb_top / tb_axil ─→ X_sim.hex ──────────────┐
+                               ├→ run_board.py → uart_rx → gpu_core → rasterizer        │
+                               │               → depth_unit → uart_tx → X_basys3.bin ───┤
+                               └→ scene_X.h → main.c → gpu_axil → gpu_core …            │
+                                             → log → zynq_log.py → X_zynq.bin ──────────┤
+                                                                         compare.py ←───┘
+compare.py      → X_&lt;platform&gt;.json → make_report.py → results_table.csv / .md
+core_compare.tcl → *_core_*.rpt     → collect_vivado.py → fpga_compare.csv
+sweep.py        → rand_s4 … rand_s64 → sweep.csv</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="plan">7. 14-day plan (two tracks in parallel)</h2>
+<div class="tbl"><table>
+<tr><th>Day</th><th><span class="tag t-m1" style="margin:0">Member 1</span> Hardware</th><th><span class="tag t-m2" style="margin:0">Member 2</span> Modeling</th></tr>
+<tr><td>1</td><td>S0–S3: golden runs on all scenes</td><td>S0: Python + golden; Blender ready; read the hand-off contract</td></tr>
+<tr><td>2</td><td>S5 in xsim: all PASS</td><td>S2b: first model (teapot), <code>check_models.py</code> OK</td></tr>
+<tr><td>3</td><td>S4 timing, S6 build: WNS ≥ 0, LED0 blinks</td><td>bunny + room</td></tr>
+<tr><td>4</td><td>S6: all scenes PASS on Basys3</td><td>own model; push <code>models/</code> (first hand-off)</td></tr>
+<tr><td>5</td><td>E2; run the Blender models in sim + Basys3</td><td>teapot LODs 100/250/500/1000 (E8)</td></tr>
+<tr><td>6–7</td><td>S7 hardware: <code>.xsa</code> exported</td><td>Blender reference images; <code>MODELS.md</code>; fix any model Member 1 reports</td></tr>
+<tr><td>8</td><td>S7 software: Zynq CRC = golden, ARM time</td><td>E8 predictions with <code>check_models.py</code></td></tr>
+<tr><td>9</td><td>E3, E6</td><td>Figure: Blender vs FPGA side by side</td></tr>
+<tr><td>10</td><td>E4, E5, E7, E8 on boards; <code>results_table</code></td><td>Figure: model gallery; E8 chart</td></tr>
+<tr><td>11</td><td>S10 hardware figures</td><td>Write paper section: models and test scenes</td></tr>
+<tr><td>12–13</td><td>Paper draft (lead)</td><td>Review draft, captions, figures</td></tr>
+<tr><td>14</td><td colspan="2">Together: demo video (Blender model → FPGA screen), README, clean repo</td></tr>
+</table></div>
+
+<footer>Mini GPU Lite, EC-301 Computer Graphics, Fall 2026. Code: <code>lite/</code> in github.com/al-nusrati/Mini-GPU.</footer>
+</div>
+<script>
+(function(){
+  var r=document.documentElement, b=document.getElementById('theme');
+  try{var t=localStorage.getItem('mgl-theme'); if(t) r.setAttribute('data-theme',t);}catch(e){}
+  b.addEventListener('click',function(){
+    var c=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    var n=c==='dark'?'light':'dark'; r.setAttribute('data-theme',n);
+    try{localStorage.setItem('mgl-theme',n);}catch(e){}
+  });
+})();
+</script>
+</body>
+</html>
