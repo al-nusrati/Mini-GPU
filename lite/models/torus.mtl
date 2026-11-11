@@ -1,0 +1,10 @@
+# Blender 4.2.0 MTL File
+newmtl Red
+Ns 250
+Kd 0.900 0.250 0.200
+d 1
+
+newmtl Blue
+Ns 250
+Kd 0.200 0.450 0.950
+d 1
