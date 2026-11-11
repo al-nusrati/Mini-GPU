@@ -9,6 +9,10 @@ with a depth (Z) buffer. The **same RTL** runs on:
 Every result is checked **bit for bit** against a C++ golden model, and the
 cycle count is predicted exactly by a simple formula.
 
+Team of two: **Member 1** builds and measures the hardware; **Member 2** makes the
+3D models in Blender (`models/`, rules in `docs/methodology.html`, stage S2b).
+Full methodology: `docs/methodology.html`.
+
 ## What runs where
 
 | Step | Where |
@@ -34,12 +38,13 @@ Moving the transform onto the FPGA is future work (see the paper notes below).
 rtl/        uart_rx.sv uart_tx.sv sdp_ram.sv rasterizer.sv depth_unit.sv gpu_core.sv basys3_top.sv
 zynq/       gpu_axil.v (AXI-Lite wrapper)  main.c (ARM program)  scene_*.h (made by make_scene.py)
 golden/     golden.cpp (bit-exact model + CPU timing)  build.bat
-pc/         protocol.py make_scene.py run_board.py compare.py sweep.py
+pc/         protocol.py make_scene.py run_board.py compare.py sweep.py check_models.py
             collect_vivado.py make_report.py zynq_log.py
 sim/        tb_gpu.sv (core)  tb_top.sv (Basys3 + UART)  tb_axil.sv (Zynq wrapper)
             run_xsim.bat run_xsim_top.bat (Windows/Vivado)  run_verilator.sh run_all.sh (Linux)
 vivado/     build_basys3.tcl program_basys3.tcl core_compare.tcl
 constraints/ basys3.xdc core_ooc.xdc
+models/     Blender exports (*.obj + *.mtl), MODELS.md   (Member 2)
 scenes/     *.bin (bytes sent to the GPU)  *.hex (same, for the testbench)
 results/    everything the scripts write
 ```
@@ -91,6 +96,8 @@ sweep.py → many random scenes → sweep.csv
 ```bat
 REM 1. scenes + golden
 python pc\make_scene.py cube
+python pc\make_scene.py obj models\torus.obj --angle 20 --tilt 35
+python pc\check_models.py            (Member 2: previews of every model)
 golden\golden.exe scenes\cube.bin results\cube
 
 REM 2. simulate in Vivado (must say RESULT: PASS)
